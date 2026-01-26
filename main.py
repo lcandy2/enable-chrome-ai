@@ -150,7 +150,7 @@ def main():
     if len(terminated_chromes) > 0:
         print('Restart Chrome')
         for chrome in terminated_chromes:
-            subprocess.Popen([chrome, '--start-maximized'], stderr=subprocess.DEVNULL)
+            subprocess.Popen([chrome], stderr=subprocess.DEVNULL)
 
     input('Enter to continue...')
 
