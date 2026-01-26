@@ -69,42 +69,62 @@ def get_last_version(user_data_path):
         return fp.read()
 
 
+def set_all_is_glic_eligible(obj):
+    """Recursively find and set all is_glic_eligible to true."""
+    modified = False
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == 'is_glic_eligible' and value != True:
+                obj[key] = True
+                modified = True
+            elif isinstance(value, (dict, list)):
+                if set_all_is_glic_eligible(value):
+                    modified = True
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, (dict, list)):
+                if set_all_is_glic_eligible(item):
+                    modified = True
+    return modified
+
+
 def patch_local_state(user_data_path):
     local_state_file = os.path.join(user_data_path, 'Local State')
     if not os.path.exists(local_state_file):
         print('Failed to patch Local State. File not found', local_state_file)
+        return
 
     with open(local_state_file, 'r', encoding='utf-8') as fp:
         local_state = json.load(fp)
 
-    if local_state['variations_country'] != 'US':
-        local_state['variations_country'] = 'US'
+    modified = False
+
+    # 1. Set all is_glic_eligible to true (recursive)
+    if set_all_is_glic_eligible(local_state):
+        modified = True
+        print('Patched is_glic_eligible')
+
+    # 2. Set variations_country to "us" (root level)
+    if local_state.get('variations_country') != 'us':
+        local_state['variations_country'] = 'us'
+        modified = True
+        print('Patched variations_country')
+
+    # 3. Set variations_permanent_consistency_country[1] to "us" (root level)
+    if 'variations_permanent_consistency_country' in local_state:
+        if isinstance(local_state['variations_permanent_consistency_country'], list) and \
+           len(local_state['variations_permanent_consistency_country']) >= 2:
+            if local_state['variations_permanent_consistency_country'][1] != 'us':
+                local_state['variations_permanent_consistency_country'][1] = 'us'
+                modified = True
+                print('Patched variations_permanent_consistency_country')
+
+    if modified:
         with open(local_state_file, 'w', encoding='utf-8') as fp:
             json.dump(local_state, fp)
         print('Succeeded in patching Local State')
     else:
         print('No need to patch Local State')
-
-
-def patch_preferences(user_data_path):
-    for file in os.listdir(user_data_path):
-        if not os.path.isdir(file) and file != 'Default' and not file.startswith('Profile '):
-            continue
-
-        preferences_file = os.path.join(user_data_path, file, 'Preferences')
-        if not os.path.exists(preferences_file) or not os.path.isfile(preferences_file):
-            continue
-            
-        with open(preferences_file, 'r', encoding='utf-8') as fp:
-            preferences = json.load(fp)
-
-        if preferences['browser'].get('chat_ip_eligibility_status') in [None, False]:
-            preferences['browser']['chat_ip_eligibility_status'] = True
-            with open(preferences_file, 'w', encoding='utf-8') as fp:
-                json.dump(preferences, fp)
-            print('Succeeded in patching Preferences of', file)
-        else:
-            print('No need to patch Preferences of', file)
 
 
 def main():
@@ -124,7 +144,6 @@ def main():
         main_version = int(last_version.split('.')[0])
         print('Patching Chrome', version, last_version, '"'+user_data_path+'"')
         patch_local_state(user_data_path)
-        patch_preferences(user_data_path)
 
     if len(terminated_chromes) > 0:
         print('Restart Chrome')
