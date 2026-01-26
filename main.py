@@ -9,22 +9,22 @@ import psutil
 def get_version_and_user_data_path():
     os_and_user_data_paths = {
         'win32': {
-            'stable': '~/AppData/Local/Microsoft/Edge/User Data',
-            'canary': '~/AppData/Local/Microsoft/Edge SxS/User Data',
-            'dev': '~/AppData/Local/Microsoft/Edge Dev/User Data',
-            'beta': '~/AppData/Local/Microsoft/Edge Beta/User Data',
+            'stable': '~/AppData/Local/Google/Chrome/User Data',
+            'canary': '~/AppData/Local/Google/Chrome SxS/User Data',
+            'dev': '~/AppData/Local/Google/Chrome Dev/User Data',
+            'beta': '~/AppData/Local/Google/Chrome Beta/User Data',
         },
         'linux': {
-            'stable': '~/.config/microsoft-edge',
-            'canary': '~/.config/microsoft-edge-canary',
-            'dev': '~/.config/microsoft-edge-dev',
-            'beta': '~/.config/microsoft-edge-beta',
+            'stable': '~/.config/google-chrome',
+            'canary': '~/.config/google-chrome-canary',
+            'dev': '~/.config/google-chrome-unstable',
+            'beta': '~/.config/google-chrome-beta',
         },
         'darwin': {
-            'stable': '~/Library/Application Support/Microsoft Edge',
-            'canary': '~/Library/Application Support/Microsoft Edge Canary',
-            'dev': '~/Library/Application Support/Microsoft Edge Dev',
-            'beta': '~/Library/Application Support/Microsoft Edge Beta',
+            'stable': '~/Library/Application Support/Google/Chrome',
+            'canary': '~/Library/Application Support/Google/Chrome Canary',
+            'dev': '~/Library/Application Support/Google/Chrome Dev',
+            'beta': '~/Library/Application Support/Google/Chrome Beta',
         },
     }
 
@@ -40,14 +40,14 @@ def get_version_and_user_data_path():
     raise Exception('Unsupported platform %s' % sys.platform)
 
 
-def shutdown_edge():
-    terminated_edges = set()
+def shutdown_chrome():
+    terminated_chromes = set()
     for process in psutil.process_iter():
         try:
             if sys.platform == 'darwin':
-                if not process.name().startswith('Microsoft Edge'):
+                if not process.name().startswith('Google Chrome'):
                     continue
-            elif os.path.splitext(process.name())[0] != 'msedge':
+            elif os.path.splitext(process.name())[0] != 'chrome':
                 continue
             elif not process.is_running():
                 continue
@@ -55,10 +55,10 @@ def shutdown_edge():
                 continue
             location = process.exe()
             process.kill()
-            terminated_edges.add(location)
+            terminated_chromes.add(location)
         except psutil.NoSuchProcess:
             pass
-    return terminated_edges
+    return terminated_chromes
 
 
 def get_last_version(user_data_path):
@@ -112,9 +112,9 @@ def main():
     if len(version_and_user_data_path) == 0:
         raise Exception('No available user data path found')
 
-    terminated_edges = shutdown_edge()
-    if len(terminated_edges) > 0:
-        print('Shutdown Edge')
+    terminated_chromes = shutdown_chrome()
+    if len(terminated_chromes) > 0:
+        print('Shutdown Chrome')
 
     for version, user_data_path in version_and_user_data_path.items():
         last_version = get_last_version(user_data_path)
@@ -122,14 +122,14 @@ def main():
             print('Failed to get version. File not found', os.path.join(user_data_path, 'Last Version'))
             continue
         main_version = int(last_version.split('.')[0])
-        print('Patching Edge', version, last_version, '"'+user_data_path+'"')
+        print('Patching Chrome', version, last_version, '"'+user_data_path+'"')
         patch_local_state(user_data_path)
         patch_preferences(user_data_path)
 
-    if len(terminated_edges) > 0:
-        print('Restart Edge')
-        for edge in terminated_edges:
-            subprocess.Popen([edge, '--start-maximized'], stderr=subprocess.DEVNULL)
+    if len(terminated_chromes) > 0:
+        print('Restart Chrome')
+        for chrome in terminated_chromes:
+            subprocess.Popen([chrome, '--start-maximized'], stderr=subprocess.DEVNULL)
 
     input('Enter to continue...')
 
