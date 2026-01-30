@@ -1,5 +1,10 @@
 # Enable Chrome AI ✨
 
+Researched and scripted by [lcandy2](https://twitter.com/vanillaCitron).
+
+[![Twitter](https://img.shields.io/twitter/follow/vanillaCitron)](https://twitter.com/vanillaCitron)
+
+
 English | [中文](README.zh.md)
 
 Enable Gemini in Chrome, AI Powered History search, and DevTools AI Innovations in Google Chrome—without cleaning data or reinstalling.
@@ -44,3 +49,9 @@ Tiny Python helper that enables Chrome's built-in AI features by patching your l
 - The script writes to your existing Chrome profile; back up `User Data` if you want a safety net.
 - Run as the same OS user who owns the Chrome profile to ensure write access.
 - Not affiliated with Google—use at your own risk.
+
+## 📜 License
+Please credit this project when reposting or creating derivative works.
+
+## 🙏 Acknowledgments
+- [show-copilot](https://github.com/hzkaai/show-copilot)

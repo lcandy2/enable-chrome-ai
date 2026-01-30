@@ -1,5 +1,9 @@
 # Enable Chrome AI ✨
 
+由 [lcandy2](https://twitter.com/vanillaCitron) 研究并制作脚本。
+
+[![Twitter](https://img.shields.io/twitter/follow/vanillaCitron)](https://twitter.com/vanillaCitron)
+
 [English](README.md) | 中文
 
 在 Google Chrome 中启用 Gemini、AI 历史搜索、DevTools AI 等创新功能——无需清除数据或重新安装。
@@ -44,3 +48,9 @@
 - 脚本会修改现有 Chrome 配置，如需保险请先备份 `User Data`。
 - 使用拥有该 Chrome 配置的同一系统用户运行，确保有写入权限。
 - 与 Google 无关，风险自担。
+
+## 📜 许可
+转载或基于本研究二次创作需要注明来源。
+
+## 🙏 致谢
+- [show-copilot](https://github.com/hzkaai/show-copilot)
