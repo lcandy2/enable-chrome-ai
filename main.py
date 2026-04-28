@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import json
 import subprocess
@@ -40,26 +40,53 @@ def get_version_and_user_data_path():
     raise Exception('Unsupported platform %s' % sys.platform)
 
 
+
+
 def shutdown_chrome():
     terminated_chromes = set()
-    for process in psutil.process_iter():
+    for process in psutil.process_iter(attrs=["name", "exe"]):
         try:
-            if sys.platform == 'darwin':
-                if not process.name().startswith('Google Chrome'):
-                    continue
-            elif os.path.splitext(process.name())[0] != 'chrome':
-                continue
-            elif not process.is_running():
-                continue
-            elif process.parent() is not None and process.parent().name() == process.name():
-                continue
-            location = process.exe()
-            process.kill()
-            terminated_chromes.add(location)
-        except psutil.NoSuchProcess:
-            pass
-    return terminated_chromes
+            name = process.info.get("name") or process.name()
+            base = os.path.splitext(name)[0].lower() if name else ""
 
+            if sys.platform == 'darwin':
+                if not (name or "").startswith('Google Chrome'):
+                    continue
+            else:
+                if base != 'chrome':
+                    continue
+
+            if not process.is_running():
+                continue
+
+            try:
+                parent = process.parent()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                parent = None
+
+            if parent is not None:
+                try:
+                    parent_name = parent.name()
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    parent_name = None
+                if parent_name and (os.path.splitext(parent_name)[0].lower() == base):
+                    continue
+
+            try:
+                location = process.info.get("exe") or process.exe()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                location = None
+
+            try:
+                process.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+
+            if location:
+                terminated_chromes.add(location)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return terminated_chromes
 
 def get_last_version(user_data_path):
     last_version_file = os.path.join(user_data_path, 'Last Version')
@@ -68,7 +95,10 @@ def get_last_version(user_data_path):
     with open(last_version_file, 'r', encoding='utf-8') as fp:
         return fp.read()
 
-
+    if not os.path.exists(last_version_file):
+        return None
+    with open(last_version_file, 'r', encoding='utf-8') as fp:
+        return fp.read()
 def set_all_is_glic_eligible(obj):
     """Recursively find and set all is_glic_eligible to true."""
     modified = False
@@ -151,10 +181,20 @@ def main():
         print('Restart Chrome')
         for chrome in terminated_chromes:
             subprocess.Popen([chrome], stderr=subprocess.DEVNULL)
-
-    input('Enter to continue...')
-
-
+    try:
+        if sys.stdin.isatty():
+            input('Enter to continue...')
+    except EOFError:
+        pass
 if __name__ == '__main__':
     main()
+
+
+
+
+
+
+
+
+
 
