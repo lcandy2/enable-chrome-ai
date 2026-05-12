@@ -31,9 +31,15 @@ Tiny Python helper that enables Chrome's built-in AI features by patching your l
 2. Install deps: `python -m pip install psutil`.
 3. Run: `python main.py`.
 
+## ↩️ Restore / Undo
+- Before the first patch, the script creates a backup next to Chrome's `Local State` file: `Local State.enable-chrome-ai.bak`.
+- To restore the original file, run: `uv run main.py --restore` or `python main.py --restore`.
+- If you manage backups yourself, run with `--no-backup` to skip backup creation.
+
 ## 🔧 What Happens
 - Finds Chrome user data for Stable/Canary/Dev/Beta on Windows, macOS, and Linux.
 - Kills top-level Chrome processes to avoid file locks, then brings them back.
+- Creates a `Local State.enable-chrome-ai.bak` backup before the first patch.
 - Sets all `is_glic_eligible` to `true` in `Local State` (recursive search).
 - Sets `variations_country` to `"us"` in `Local State`.
 - Sets `variations_permanent_consistency_country` to `["<version>", "us"]` in `Local State`.
@@ -49,6 +55,9 @@ Tiny Python helper that enables Chrome's built-in AI features by patching your l
 - The script writes to your existing Chrome profile; back up `User Data` if you want a safety net.
 - Run as the same OS user who owns the Chrome profile to ensure write access.
 - Not affiliated with Google—use at your own risk.
+
+## 💖 Support
+If this saved you from reinstalling Chrome or wiping profile data, you can support maintenance through [GitHub Sponsors](https://github.com/sponsors/lcandy2). Small one-time sponsorships help cover testing across Chrome channels and platforms.
 
 ## 📜 License
 Please credit this project when reposting or creating derivative works.
