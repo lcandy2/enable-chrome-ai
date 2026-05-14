@@ -30,9 +30,15 @@
 2. 安装依赖：`python -m pip install psutil`。
 3. 运行：`python main.py`。
 
+## ↩️ 恢复 / 撤销
+- 首次修改前，脚本会在 Chrome 的 `Local State` 旁创建备份：`Local State.enable-chrome-ai.bak`。
+- 如需恢复原始文件，运行：`uv run main.py --restore` 或 `python main.py --restore`。
+- 如果你已经自行管理备份，可以加 `--no-backup` 跳过备份创建。
+
 ## 🔧 做了什么
 - 自动定位 Windows / macOS / Linux 上的 Chrome Stable / Canary / Dev / Beta 用户数据目录。
 - 关闭顶层 Chrome 进程以避免文件锁，再在补丁后恢复。
+- 首次修改前创建 `Local State.enable-chrome-ai.bak` 备份。
 - 在 `Local State` 中递归查找并将所有 `is_glic_eligible` 设为 `true`。
 - 在 `Local State` 中将 `variations_country` 设为 `"us"`。
 - 在 `Local State` 中将 `variations_permanent_consistency_country` 设为 `["<版本号>", "us"]`。
@@ -48,6 +54,9 @@
 - 脚本会修改现有 Chrome 配置，如需保险请先备份 `User Data`。
 - 使用拥有该 Chrome 配置的同一系统用户运行，确保有写入权限。
 - 与 Google 无关，风险自担。
+
+## 💖 支持项目
+如果这个脚本帮你省下了重装 Chrome 或清空配置的时间，可以通过 [GitHub Sponsors](https://github.com/sponsors/lcandy2) 小额支持维护。一次性赞助也很有帮助，可以支持我继续测试更多 Chrome 渠道和平台。
 
 ## 📜 许可
 转载或基于本研究二次创作需要注明来源。

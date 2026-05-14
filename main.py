@@ -1,9 +1,31 @@
 import os
 import sys
 import json
+import shutil
+import argparse
 import subprocess
 
 import psutil
+
+
+BACKUP_SUFFIX = '.enable-chrome-ai.bak'
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Patch Chrome local profile data to enable built-in AI features.'
+    )
+    parser.add_argument(
+        '--restore',
+        action='store_true',
+        help='Restore Local State from the backup created before the first patch.',
+    )
+    parser.add_argument(
+        '--no-backup',
+        action='store_true',
+        help='Patch without creating a Local State backup.',
+    )
+    return parser.parse_args()
 
 
 def get_version_and_user_data_path():
@@ -40,23 +62,62 @@ def get_version_and_user_data_path():
     raise Exception('Unsupported platform %s' % sys.platform)
 
 
+def get_local_state_file(user_data_path):
+    return os.path.join(user_data_path, 'Local State')
+
+
+def get_backup_file(local_state_file):
+    return local_state_file + BACKUP_SUFFIX
+
+
+def backup_local_state(local_state_file):
+    backup_file = get_backup_file(local_state_file)
+    if os.path.exists(backup_file):
+        print('Backup already exists', backup_file)
+        return
+    shutil.copy2(local_state_file, backup_file)
+    print('Created backup', backup_file)
+
+
+def restore_local_state(user_data_path):
+    local_state_file = get_local_state_file(user_data_path)
+    backup_file = get_backup_file(local_state_file)
+    if not os.path.exists(backup_file):
+        print('No backup found', backup_file)
+        return False
+    shutil.copy2(backup_file, local_state_file)
+    print('Restored Local State from backup', backup_file)
+    return True
+
+
+def is_top_level_chrome_process(process):
+    name = process.name()
+    if sys.platform == 'darwin':
+        return name.startswith('Google Chrome')
+    if os.path.splitext(name)[0] != 'chrome':
+        return False
+    if not process.is_running():
+        return False
+
+    parent = process.parent()
+    if parent is None:
+        return True
+    try:
+        return parent.name() != name
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return True
+
+
 def shutdown_chrome():
     terminated_chromes = set()
     for process in psutil.process_iter():
         try:
-            if sys.platform == 'darwin':
-                if not process.name().startswith('Google Chrome'):
-                    continue
-            elif os.path.splitext(process.name())[0] != 'chrome':
-                continue
-            elif not process.is_running():
-                continue
-            elif process.parent() is not None and process.parent().name() == process.name():
+            if not is_top_level_chrome_process(process):
                 continue
             location = process.exe()
             process.kill()
             terminated_chromes.add(location)
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
     return terminated_chromes
 
@@ -88,11 +149,14 @@ def set_all_is_glic_eligible(obj):
     return modified
 
 
-def patch_local_state(user_data_path, last_version):
-    local_state_file = os.path.join(user_data_path, 'Local State')
+def patch_local_state(user_data_path, last_version, create_backup=True):
+    local_state_file = get_local_state_file(user_data_path)
     if not os.path.exists(local_state_file):
         print('Failed to patch Local State. File not found', local_state_file)
         return
+
+    if create_backup:
+        backup_local_state(local_state_file)
 
     with open(local_state_file, 'r', encoding='utf-8') as fp:
         local_state = json.load(fp)
@@ -130,6 +194,7 @@ def patch_local_state(user_data_path, last_version):
 
 
 def main():
+    args = parse_args()
     version_and_user_data_path = get_version_and_user_data_path()
     if len(version_and_user_data_path) == 0:
         raise Exception('No available user data path found')
@@ -138,14 +203,18 @@ def main():
     if len(terminated_chromes) > 0:
         print('Shutdown Chrome')
 
-    for version, user_data_path in version_and_user_data_path.items():
-        last_version = get_last_version(user_data_path)
-        if last_version is None:
-            print('Failed to get version. File not found', os.path.join(user_data_path, 'Last Version'))
-            continue
-        main_version = int(last_version.split('.')[0])
-        print('Patching Chrome', version, last_version, '"'+user_data_path+'"')
-        patch_local_state(user_data_path, last_version)
+    if args.restore:
+        for version, user_data_path in version_and_user_data_path.items():
+            print('Restoring Chrome', version, '"'+user_data_path+'"')
+            restore_local_state(user_data_path)
+    else:
+        for version, user_data_path in version_and_user_data_path.items():
+            last_version = get_last_version(user_data_path)
+            if last_version is None:
+                print('Failed to get version. File not found', os.path.join(user_data_path, 'Last Version'))
+                continue
+            print('Patching Chrome', version, last_version, '"'+user_data_path+'"')
+            patch_local_state(user_data_path, last_version, create_backup=not args.no_backup)
 
     if len(terminated_chromes) > 0:
         print('Restart Chrome')
@@ -157,4 +226,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
