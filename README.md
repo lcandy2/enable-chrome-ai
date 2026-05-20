@@ -11,7 +11,7 @@ Enable Gemini in Chrome, AI Powered History search, and DevTools AI Innovations 
 
 <img width="512" alt="Google Chrome Gemini in Chrome" src="https://github.com/user-attachments/assets/a88c56a7-f20b-432a-926c-0184194225b4" />
 
-Tiny Python helper that enables Chrome's built-in AI features by patching your local profile data (`variations_country`, `variations_permanent_consistency_country`, and `is_glic_eligible`)—no browser flags required.
+Tiny Python helper that enables Chrome's built-in AI features by patching your local Chrome state and profile preferences, then restarting Chrome with the launch args needed by current Glic checks.
 
 ## ✅ Requirements
 - Python `3.13+` (see `.python-version` / `pyproject.toml`)
@@ -37,12 +37,18 @@ Tiny Python helper that enables Chrome's built-in AI features by patching your l
 - Sets all `is_glic_eligible` to `true` in `Local State` (recursive search).
 - Sets `variations_country` to `"us"` in `Local State`.
 - Sets `variations_permanent_consistency_country` to `["<version>", "us"]` in `Local State`.
-- Restarts any Chrome builds that were running before the patch.
+- Sets `variations_permanent_overridden_country` to `"us"` in `Local State`.
+- Sets safe-seed country values (`variations_safe_seed_permanent_consistency_country` and `variations_safe_seed_session_consistency_country`) to `"us"` in `Local State`.
+- Adds current Glic entries to `browser.enabled_labs_experiments` while preserving existing flags.
+- Patches each real profile `Preferences` file with current Glic/Gemini prefs: `sync.glic_rollout_eligibility`, `browser.gemini_settings`, and `glic.pinned_to_tabstrip`.
+- Restarts any Chrome builds that were running before the patch with `--variations-override-country=us`, `--glic-dev`, and `--disable-features=GlicUseSessionCountryForFiltering`.
 
 ## ⚠️ Caveats / Known Limitations
 - The script expects `User Data/Local State` to exist; if it's missing, the run can fail (launch Chrome once to generate it).
 - Chrome restart only happens if the executable path can be detected from running processes.
-- On macOS, process detection is name-based (`Google Chrome*`) and may terminate more than just the "top-level" app process.
+- If Chrome was not running, start Chrome manually with the launch args printed by the script.
+- Gemini in Chrome can still be blocked by Google account eligibility, sign-in state, enterprise policy, account region, or server-side rollout checks.
+- On macOS, process detection targets known top-level Chrome app process names.
 - On Linux, process detection expects an executable name of `chrome`; if your build uses a different name, Chrome may not be closed (and files may remain locked).
 
 ## 🛟 Notes

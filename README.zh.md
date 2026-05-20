@@ -10,7 +10,7 @@
 
 <img width="512" alt="Google Chrome Gemini in Chrome" src="https://github.com/user-attachments/assets/a88c56a7-f20b-432a-926c-0184194225b4" />
 
-轻量 Python 脚本，通过修改本地 Chrome 配置（`variations_country`、`variations_permanent_consistency_country` 和 `is_glic_eligible`）启用浏览器内置 AI 功能，无需额外开关。
+轻量 Python 脚本，通过修改本地 Chrome 状态和 profile 偏好设置，并用当前 Glic 检查需要的启动参数重启 Chrome 来启用浏览器内置 AI 功能。
 
 ## ✅ 环境要求
 - Python `3.13+`（见 `.python-version` / `pyproject.toml`）
@@ -36,12 +36,18 @@
 - 在 `Local State` 中递归查找并将所有 `is_glic_eligible` 设为 `true`。
 - 在 `Local State` 中将 `variations_country` 设为 `"us"`。
 - 在 `Local State` 中将 `variations_permanent_consistency_country` 设为 `["<版本号>", "us"]`。
-- 重启补丁前已运行的 Chrome 版本。
+- 在 `Local State` 中将 `variations_permanent_overridden_country` 设为 `"us"`。
+- 在 `Local State` 中将 safe-seed 国家值（`variations_safe_seed_permanent_consistency_country` 和 `variations_safe_seed_session_consistency_country`）设为 `"us"`。
+- 在保留已有 flags 的同时，把当前 Glic 相关项追加到 `browser.enabled_labs_experiments`。
+- 遍历真实 profile 的 `Preferences`，写入当前 Glic/Gemini 入口相关偏好：`sync.glic_rollout_eligibility`、`browser.gemini_settings` 和 `glic.pinned_to_tabstrip`。
+- 用 `--variations-override-country=us`、`--glic-dev` 和 `--disable-features=GlicUseSessionCountryForFiltering` 重启补丁前已运行的 Chrome 版本。
 
 ## ⚠️ 已知限制 / 注意事项
 - 脚本假设 `User Data/Local State` 已存在；若缺失可能直接失败（可先启动一次 Chrome 生成配置）。
 - 只有在能从进程信息中取到可执行文件路径时，脚本才会自动重启 Chrome。
-- macOS 上按进程名（`Google Chrome*`）识别，可能会终止不止"顶层"应用进程。
+- 如果运行脚本时 Chrome 没有启动，请使用脚本打印出的启动参数手动启动 Chrome。
+- Gemini in Chrome 仍可能被 Google 账号资格、登录状态、企业策略、账号地区或服务端灰度规则阻止。
+- macOS 上仅按已知顶层 Chrome 应用进程名识别。
 - Linux 上按可执行文件名 `chrome` 识别；若你的发行版/安装方式使用其他名字，可能不会关闭 Chrome（从而仍可能有文件锁）。
 
 ## 🛟 注意
