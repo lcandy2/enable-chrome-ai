@@ -1,9 +1,12 @@
 import os
 import sys
 import json
-import subprocess
+import argparse
+import stat
+import tempfile
 
-import psutil
+from chrome_processes import restart_chrome, shutdown_chrome
+from launchd import install_launch_agent, uninstall_launch_agent
 
 
 def get_version_and_user_data_path():
@@ -40,33 +43,12 @@ def get_version_and_user_data_path():
     raise Exception('Unsupported platform %s' % sys.platform)
 
 
-def shutdown_chrome():
-    terminated_chromes = set()
-    for process in psutil.process_iter():
-        try:
-            if sys.platform == 'darwin':
-                if not process.name().startswith('Google Chrome'):
-                    continue
-            elif os.path.splitext(process.name())[0] != 'chrome':
-                continue
-            elif not process.is_running():
-                continue
-            elif process.parent() is not None and process.parent().name() == process.name():
-                continue
-            location = process.exe()
-            process.kill()
-            terminated_chromes.add(location)
-        except psutil.NoSuchProcess:
-            pass
-    return terminated_chromes
-
-
 def get_last_version(user_data_path):
     last_version_file = os.path.join(user_data_path, 'Last Version')
     if not os.path.exists(last_version_file):
         return None
     with open(last_version_file, 'r', encoding='utf-8') as fp:
-        return fp.read()
+        return fp.read().strip()
 
 
 def set_all_is_glic_eligible(obj):
@@ -74,7 +56,7 @@ def set_all_is_glic_eligible(obj):
     modified = False
     if isinstance(obj, dict):
         for key, value in obj.items():
-            if key == 'is_glic_eligible' and value != True:
+            if key == 'is_glic_eligible' and value is not True:
                 obj[key] = True
                 modified = True
             elif isinstance(value, (dict, list)):
@@ -88,7 +70,45 @@ def set_all_is_glic_eligible(obj):
     return modified
 
 
-def patch_local_state(user_data_path, last_version):
+def write_json_atomically(path, value):
+    directory = os.path.dirname(path)
+    original_mode = stat.S_IMODE(os.stat(path).st_mode)
+    descriptor, temporary_path = tempfile.mkstemp(
+        prefix='.local-state-', dir=directory)
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as fp:
+            json.dump(value, fp)
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.chmod(temporary_path, original_mode)
+        os.replace(temporary_path, path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
+def local_state_needs_patch(user_data_path, last_version, country):
+    local_state_file = os.path.join(user_data_path, 'Local State')
+    if not os.path.exists(local_state_file):
+        return False
+
+    with open(local_state_file, 'r', encoding='utf-8') as fp:
+        local_state = json.load(fp)
+
+    if country is not None:
+        if local_state.get('variations_country') != country:
+            return True
+        consistency = local_state.get('variations_permanent_consistency_country')
+        if not isinstance(consistency, list) or len(consistency) < 2:
+            return True
+        if consistency[0] != last_version or consistency[1] != country:
+            return True
+
+    probe = json.loads(json.dumps(local_state))
+    return set_all_is_glic_eligible(probe)
+
+
+def patch_local_state(user_data_path, last_version, country=None):
     local_state_file = os.path.join(user_data_path, 'Local State')
     if not os.path.exists(local_state_file):
         print('Failed to patch Local State. File not found', local_state_file)
@@ -104,57 +124,108 @@ def patch_local_state(user_data_path, last_version):
         modified = True
         print('Patched is_glic_eligible')
 
-    # 2. Set variations_country to "us" (root level)
-    if local_state.get('variations_country') != 'us':
-        local_state['variations_country'] = 'us'
-        modified = True
-        print('Patched variations_country')
+    # Use the requested variations country (defaults to "us").
+    if country is not None:
+        # 2. Set variations_country (root level)
+        if local_state.get('variations_country') != country:
+            local_state['variations_country'] = country
+            modified = True
+            print('Patched variations_country -> %s' % country)
 
-    # 3. Set variations_permanent_consistency_country[0] to last_version, [1] to "us" (root level)
-    if 'variations_permanent_consistency_country' in local_state:
-        if isinstance(local_state['variations_permanent_consistency_country'], list) and \
-           len(local_state['variations_permanent_consistency_country']) >= 2:
-            if local_state['variations_permanent_consistency_country'][0] != last_version or \
-               local_state['variations_permanent_consistency_country'][1] != 'us':
-                local_state['variations_permanent_consistency_country'][0] = last_version
-                local_state['variations_permanent_consistency_country'][1] = 'us'
-                modified = True
-                print('Patched variations_permanent_consistency_country')
+        # 3. Set variations_permanent_consistency_country[0] to last_version, [1] to country
+        consistency = local_state.get('variations_permanent_consistency_country')
+        if not isinstance(consistency, list) or len(consistency) < 2:
+            local_state['variations_permanent_consistency_country'] = [last_version, country]
+            modified = True
+            print('Created variations_permanent_consistency_country -> %s' % country)
+        elif consistency[0] != last_version or consistency[1] != country:
+            consistency[0] = last_version
+            consistency[1] = country
+            modified = True
+            print('Patched variations_permanent_consistency_country -> %s' % country)
+    else:
+        print('Kept variations_country as-is (%s); pass --country to override'
+              % local_state.get('variations_country'))
 
     if modified:
-        with open(local_state_file, 'w', encoding='utf-8') as fp:
-            json.dump(local_state, fp)
+        write_json_atomically(local_state_file, local_state)
         print('Succeeded in patching Local State')
     else:
         print('No need to patch Local State')
 
 
+def parse_country(value):
+    country = value.lower()
+    if len(country) != 2 or not country.isascii() or not country.isalpha():
+        raise argparse.ArgumentTypeError('country must be a two-letter code')
+    return country
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Enable Chrome's built-in AI by patching the local profile.")
+    parser.add_argument(
+        '--country', default='us', type=parse_country, metavar='CC',
+        help='Set variations country (default: us; e.g. us, sg).')
+    parser.add_argument(
+        '-y', '--yes', action='store_true',
+        help='Run non-interactively (skip the final Enter prompt). For launchd/cron.')
+    persistence = parser.add_mutually_exclusive_group()
+    persistence.add_argument(
+        '--install-persistence', action='store_true',
+        help='Install a macOS LaunchAgent that repairs country drift.')
+    persistence.add_argument(
+        '--remove-persistence', action='store_true',
+        help='Unload and remove the macOS LaunchAgent.')
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    if args.install_persistence:
+        install_launch_agent(args.country, __file__)
+        return
+    if args.remove_persistence:
+        uninstall_launch_agent()
+        return
+
     version_and_user_data_path = get_version_and_user_data_path()
     if len(version_and_user_data_path) == 0:
         raise Exception('No available user data path found')
 
-    terminated_chromes = shutdown_chrome()
-    if len(terminated_chromes) > 0:
-        print('Shutdown Chrome')
-
+    pending = {}
     for version, user_data_path in version_and_user_data_path.items():
         last_version = get_last_version(user_data_path)
         if last_version is None:
             print('Failed to get version. File not found', os.path.join(user_data_path, 'Last Version'))
             continue
-        main_version = int(last_version.split('.')[0])
-        print('Patching Chrome', version, last_version, '"'+user_data_path+'"')
-        patch_local_state(user_data_path, last_version)
+        if local_state_needs_patch(user_data_path, last_version, args.country):
+            pending[version] = (last_version, user_data_path)
 
+    if not pending:
+        print('All Chrome profiles already match country %s' % args.country)
+        if not args.yes:
+            input('Enter to continue...')
+        return
+
+    terminated_chromes = shutdown_chrome()
     if len(terminated_chromes) > 0:
-        print('Restart Chrome')
-        for chrome in terminated_chromes:
-            subprocess.Popen([chrome], stderr=subprocess.DEVNULL)
+        print('Shutdown Chrome')
 
-    input('Enter to continue...')
+    try:
+        for version, (last_version, user_data_path) in pending.items():
+            print('Patching Chrome', version, last_version, '"'+user_data_path+'"')
+            patch_local_state(user_data_path, last_version, country=args.country)
+    finally:
+        if len(terminated_chromes) > 0:
+            print('Restart Chrome')
+            for chrome in terminated_chromes:
+                restart_chrome(chrome)
+
+    if not args.yes:
+        input('Enter to continue...')
 
 
 if __name__ == '__main__':
     main()
-
