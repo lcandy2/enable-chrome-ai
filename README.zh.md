@@ -25,6 +25,15 @@
 3. 运行脚本：`uv run main.py`。
 4. 补丁过程中 Chrome 会被关闭；重启后根据提示按 Enter 结束。
 
+macOS 上可安装每周运行的 LaunchAgent，让 US 区域配置自动保持：
+
+```bash
+uv run main.py --install-persistence
+```
+
+任务会在安装后、登录时和每周日 04:00（若休眠则在下次唤醒后）检查配置；仅在区域或资格值发生漂移时重启
+Chrome。运行 `uv run main.py --remove-persistence` 可卸载。卸载只会停止后续检查，不会还原 Chrome 原有配置值。
+
 ## ⚡️ 快速开始（pip）
 1. 创建并激活虚拟环境。
 2. 安装依赖：`python -m pip install psutil`。
@@ -41,7 +50,8 @@
 ## ⚠️ 已知限制 / 注意事项
 - 脚本假设 `User Data/Local State` 已存在；若缺失可能直接失败（可先启动一次 Chrome 生成配置）。
 - 只有在能从进程信息中取到可执行文件路径时，脚本才会自动重启 Chrome。
-- macOS 上按进程名（`Google Chrome*`）识别，可能会终止不止"顶层"应用进程。
+- macOS 上只识别已知的 Chrome 顶层应用进程名，并排除 Helper 进程。
+- 持久化任务依赖当前仓库路径和 Python 环境，移动或删除后需要重新安装任务。
 - Linux 上按可执行文件名 `chrome` 识别；若你的发行版/安装方式使用其他名字，可能不会关闭 Chrome（从而仍可能有文件锁）。
 
 ## 🛟 注意

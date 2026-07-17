@@ -26,6 +26,17 @@ Tiny Python helper that enables Chrome's built-in AI features by patching your l
 3. Run the script: `uv run main.py`.
 4. Chrome will close while patching; after it restarts, press Enter to finish.
 
+To keep the US region persistent on macOS, install the scheduled LaunchAgent:
+
+```bash
+uv run main.py --install-persistence
+```
+
+It checks after installation, at login, and every Sunday at 04:00 (or after the
+next wake). It only restarts Chrome when the region or eligibility values have
+drifted. Remove it with `uv run main.py --remove-persistence`. Removing the
+LaunchAgent stops future checks but does not restore previous Chrome values.
+
 ## ⚡️ Quick Start (pip)
 1. Create and activate a venv.
 2. Install deps: `python -m pip install psutil`.
@@ -42,7 +53,8 @@ Tiny Python helper that enables Chrome's built-in AI features by patching your l
 ## ⚠️ Caveats / Known Limitations
 - The script expects `User Data/Local State` to exist; if it's missing, the run can fail (launch Chrome once to generate it).
 - Chrome restart only happens if the executable path can be detected from running processes.
-- On macOS, process detection is name-based (`Google Chrome*`) and may terminate more than just the "top-level" app process.
+- On macOS, process detection targets the known top-level Chrome app names and excludes helper processes.
+- Persistent mode depends on this checkout and its Python environment remaining at their current paths.
 - On Linux, process detection expects an executable name of `chrome`; if your build uses a different name, Chrome may not be closed (and files may remain locked).
 
 ## 🛟 Notes
