@@ -167,8 +167,10 @@ def main():
         print('Restart Chrome')
         for chrome in terminated_chromes:
             if sys.platform == 'darwin':
-                # 用 open -a 走 LaunchServices 拉起：直接 exec 内部二进制在更新期会变成
-                # code_sign_clone 临时副本导致静默失败，且不会把窗口带到前台。
+                # Relaunch through LaunchServices ("open -a"): exec'ing the internal
+                # binary directly resolves to the code_sign_clone temporary copy
+                # during an auto-update and fails silently, and it never brings
+                # the window to the foreground.
                 subprocess.Popen(['open', '-a', os.path.basename(chrome)], stderr=subprocess.DEVNULL)
             else:
                 subprocess.Popen([chrome], stderr=subprocess.DEVNULL)
