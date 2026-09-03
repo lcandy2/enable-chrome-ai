@@ -41,22 +41,38 @@ def get_version_and_user_data_path():
 
 
 def shutdown_chrome():
+    """Kill all Chrome processes; return only the main browser executables to relaunch."""
     terminated_chromes = set()
     for process in psutil.process_iter():
         try:
+            name = process.name()
+
             if sys.platform == 'darwin':
-                if not process.name().startswith('Google Chrome'):
-                    continue
-            elif os.path.splitext(process.name())[0] != 'chrome':
+                # 主浏览器 + helper 都以 "Google Chrome" 开头。
+                is_chrome = name.startswith('Google Chrome')
+                is_main_browser = is_chrome and 'Helper' not in name
+                # crashpad 进程名 "chrome_crashpad_handler" 与 Electron 应用（WorkBuddy、
+                # CodeBuddy 等）同名，必须用可执行文件路径确认它确实属于 Google Chrome。
+                if not is_chrome and name.startswith('chrome_crashpad'):
+                    is_chrome = 'Google Chrome' in process.exe()
+            else:
+                is_chrome = os.path.splitext(name)[0] == 'chrome'
+                # 主浏览器是其父进程不是另一个 chrome 的顶层进程（保留原脚本语义）。
+                is_main_browser = is_chrome and (
+                    process.parent() is None or process.parent().name() != name
+                )
+
+            if not is_chrome:
                 continue
-            elif not process.is_running():
-                continue
-            elif process.parent() is not None and process.parent().name() == process.name():
-                continue
-            location = process.exe()
+
+            # 先取 exe 路径再 kill：kill 之后进程可能变成僵尸态取不到 exe。
+            location = process.exe() if is_main_browser else None
             process.kill()
-            terminated_chromes.add(location)
-        except psutil.NoSuchProcess:
+
+            # 只重启主浏览器。裸启动 Helper / crashpad 子进程会产生孤儿进程，导致 Chrome 卡死。
+            if is_main_browser:
+                terminated_chromes.add(location)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
     return terminated_chromes
 
@@ -150,7 +166,12 @@ def main():
     if len(terminated_chromes) > 0:
         print('Restart Chrome')
         for chrome in terminated_chromes:
-            subprocess.Popen([chrome], stderr=subprocess.DEVNULL)
+            if sys.platform == 'darwin':
+                # 用 open -a 走 LaunchServices 拉起：直接 exec 内部二进制在更新期会变成
+                # code_sign_clone 临时副本导致静默失败，且不会把窗口带到前台。
+                subprocess.Popen(['open', '-a', os.path.basename(chrome)], stderr=subprocess.DEVNULL)
+            else:
+                subprocess.Popen([chrome], stderr=subprocess.DEVNULL)
 
     input('Enter to continue...')
 
